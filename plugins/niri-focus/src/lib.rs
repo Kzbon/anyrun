@@ -2,8 +2,9 @@ use std::{convert::Into, fs};
 
 use abi_stable::std_types::{ROption, RString, RVec};
 use anyrun_plugin::{HandleResult, Match, PluginInfo, get_matches, handler, info, init};
+use freedesktop_desktop_entry::DesktopEntry;
 use fuzzy_matcher::FuzzyMatcher;
-use niri_ipc::{Action, Request, Window, socket::Socket};
+use niri_ipc::{Action, Request, socket::Socket};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -20,7 +21,7 @@ impl Default for Config {
 struct State {
     config: Config,
     socket: Socket,
-    windows: Vec<(Option<String>, Window)>,
+    entries: Vec<DesktopEntry>,
 }
 
 #[init]
@@ -36,17 +37,8 @@ fn init(config_dir: RString) -> Option<State> {
         }
     };
 
-    let Ok(mut socket) = Socket::connect() else {
+    let Ok(socket) = Socket::connect() else {
         eprintln!("[niri-focus] Failed to connect to niri socket");
-        return None;
-    };
-
-    let windows = if let Ok(Ok(niri_ipc::Response::Windows(windows))) =
-        socket.send(niri_ipc::Request::Windows)
-    {
-        windows
-    } else {
-        eprintln!("[niri-focus] Failed to get window list from niri");
         return None;
     };
 
@@ -57,24 +49,7 @@ fn init(config_dir: RString) -> Option<State> {
     Some(State {
         config,
         socket,
-        windows: windows
-            .into_iter()
-            .map(|win| {
-                (
-                    win.app_id
-                        .as_ref()
-                        .and_then(|app_id| {
-                            freedesktop_desktop_entry::find_app_by_id(
-                                &entries,
-                                freedesktop_desktop_entry::unicase::Ascii::new(app_id),
-                            )
-                        })
-                        .and_then(|entry| entry.icon())
-                        .map(|icon| icon.to_string()),
-                    win,
-                )
-            })
-            .collect(),
+        entries,
     })
 }
 
@@ -87,13 +62,39 @@ fn info() -> PluginInfo {
 }
 
 #[get_matches]
-fn get_matches(input: RString, state: &Option<State>) -> RVec<Match> {
+fn get_matches(input: RString, state: &mut Option<State>) -> RVec<Match> {
     let Some(state) = state else {
         return RVec::new();
     };
+
+    let windows = if let Ok(Ok(niri_ipc::Response::Windows(windows))) =
+        state.socket.send(niri_ipc::Request::Windows)
+    {
+        windows
+            .into_iter()
+            .map(|win| {
+                (
+                    win.app_id
+                        .as_ref()
+                        .and_then(|app_id| {
+                            freedesktop_desktop_entry::find_app_by_id(
+                                &state.entries,
+                                freedesktop_desktop_entry::unicase::Ascii::new(app_id),
+                            )
+                        })
+                        .and_then(|entry| entry.icon())
+                        .map(|icon| icon.to_string()),
+                    win,
+                )
+            })
+            .collect::<Vec<_>>()
+    } else {
+        eprintln!("[niri-focus] Failed to get window list from niri");
+        return RVec::new();
+    };
+
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().smart_case();
-    let mut entries = state
-        .windows
+    let mut entries = windows
         .iter()
         .filter_map(|(icon, window)| {
             let score = window
