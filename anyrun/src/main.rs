@@ -237,6 +237,9 @@ fn main() {
 
             let state = Rc::new(RefCell::new(DaemonState { sender: None }));
 
+            // Preload icon theme to improve first launch speed
+            let _theme = gtk::IconTheme::default();
+
             dbus_conn
                 .register_object("/org/anyrun/anyrun", &interface)
                 .typed_method_call::<InterfaceMethod>()
