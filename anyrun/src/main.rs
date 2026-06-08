@@ -10,6 +10,7 @@ use gtk4::{
     self as gtk,
     gio::{self},
 };
+use gtk4_layer_shell::LayerShell;
 use relm4::Sender;
 use serde::{Deserialize, Serialize};
 
@@ -236,6 +237,13 @@ fn main() {
             let _hold_guard = app.hold();
 
             let state = Rc::new(RefCell::new(DaemonState { sender: None }));
+
+            // Create an empty window on launch and show it to make sure GPU resources are initialized
+            // This should help with first launch speed
+            let window = gtk::Window::new();
+            window.init_layer_shell();
+            window.set_visible(true);
+            window.close();
 
             dbus_conn
                 .register_object("/org/anyrun/anyrun", &interface)
