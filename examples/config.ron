@@ -29,13 +29,18 @@ Config(
   hide_plugin_info: false, 
 
   // Close window when a click outside the main box is received
-  close_on_click: false,
+  close_on_click: true,
 
   // Show search results immediately when Anyrun starts
-  show_results_immediately: false,
+  // (fuzzel-style: all applications listed on empty input)
+  show_results_immediately: true,
 
   // Limit amount of entries shown in total
   max_entries: None,
+
+  // Max height of the scrollable results list in pixels. When set, the list
+  // scrolls internally instead of expanding the window. Set to None for no limit.
+  list_height: Some(400),
   
   // List of plugins to be loaded by default, can be specified with a relative path to be loaded from the
   // `<anyrun config dir>/plugins` directory or with an absolute path to just load the file the path points to.
