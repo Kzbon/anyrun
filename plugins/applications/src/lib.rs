@@ -185,6 +185,29 @@ pub fn init(config_dir: RString) -> State {
 
 #[get_matches]
 pub fn get_matches(input: RString, state: &State) -> RVec<Match> {
+    if input.is_empty() {
+        let mut entries = state
+            .entries
+            .iter()
+            .map(|(entry, id)| (entry, *id))
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.0.name.cmp(&b.0.name));
+        return entries
+            .into_iter()
+            .map(|(entry, id)| Match {
+                title: entry.localized_name().into(),
+                description: if state.config.hide_description {
+                    ROption::RNone
+                } else {
+                    entry.desc.clone().map(|desc| desc.into()).into()
+                },
+                use_pango: false,
+                icon: ROption::RSome(entry.icon.clone().into()),
+                id: ROption::RSome(id),
+            })
+            .collect::<RVec<_>>();
+    }
+
     let matcher = fuzzy_matcher::skim::SkimMatcherV2::default().ignore_case();
     let mut entries = state
         .entries
