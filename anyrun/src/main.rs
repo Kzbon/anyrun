@@ -257,20 +257,32 @@ fn main() {
                         let app = app.unwrap();
                         match method {
                             InterfaceMethod::Show(show) => {
-                                // Only launch an instance if another one doesn't exist
-                                if state.borrow().sender.is_none() {
+                                // Toggle semantics: if a launcher is already
+                                // visible, close it instead of erroring. This
+                                // lets a single keybinding (e.g. Mod+D) both
+                                // open and close Anyrun.
+                                //
+                                // The sender is cloned out of the RefCell and
+                                // the borrow dropped *before* emitting Close,
+                                // because the Close handler re-borrows state
+                                // to clear `sender` — borrowing while the read
+                                // borrow is still alive would panic.
+                                let sender_opt = state.borrow().sender.clone();
+                                if let Some(sender) = sender_opt {
+                                    sender.emit(app::AppMsg::Action(config::Action::Close));
+                                    invocation.return_value(Some(
+                                        &(serde_json::to_vec(&Ok::<
+                                            app::PostRunAction,
+                                            app::ShowError
+                                        >(app::PostRunAction::None))
+                                        .unwrap(),)
+                                            .to_variant(),
+                                    ));
+                                } else {
                                     state.borrow_mut().sender = Some(app::App::launch(
                                         &app,
                                         serde_json::from_slice(&show.args).unwrap(),
                                         Some((state.clone(), invocation)),
-                                    ));
-                                } else {
-                                    invocation.return_value(Some(
-                                        &(serde_json::to_vec(&Err::<app::PostRunAction, _>(
-                                            app::ShowError::AlreadyShowed,
-                                        ))
-                                        .unwrap(),)
-                                            .to_variant(),
                                     ));
                                 }
                             }
