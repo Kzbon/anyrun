@@ -6,6 +6,13 @@ Launch applications.
 
 Simply search for the application you wish to launch.
 
+> [!NOTE]
+> In this fork, when the input is empty the plugin lists **all** applications
+> (sorted by name) instead of showing nothing — combined with
+> `show_results_immediately: true` in the main config this gives a fuzzel-style
+> browsable application menu on launch. Requires `list_height` to be set for the
+> list to scroll instead of expanding the window.
+
 *NOTE: The applications plugin does not look for executables in your $PATH, it looks for [desktop entries](https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-latest.html) in standard locations (`XDG_DATA_DIRS`).*
 
 ## Configuration
