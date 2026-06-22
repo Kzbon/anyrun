@@ -97,6 +97,70 @@ impl App {
             .collect()
     }
 
+    /// Move selection forward/backward through the combined match list,
+    /// wrapping at the ends and handling the no-selection case. Keeps the
+    /// input focused and scrolls the new selection into view.
+    fn move_selection(
+        &self,
+        entry: &gtk::Text,
+        scrolled: &gtk::ScrolledWindow,
+        forward: bool,
+    ) {
+        let matches = self.combined_matches();
+        if matches.is_empty() {
+            return;
+        }
+        let cur = self.current_selection().map(|(i, _, _)| i);
+        let next = match (cur, forward) {
+            (Some(i), true) => matches.get(i + 1).map(|_| i + 1).unwrap_or(0),
+            (Some(i), false) => {
+                if i == 0 {
+                    matches.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            (None, true) => 0,
+            (None, false) => matches.len() - 1,
+        };
+
+        // Clear selection in every plugin ListBox, then select the target row.
+        for (_, plugin) in self.plugins.iter().enumerate() {
+            plugin
+                .matches
+                .widget()
+                .select_row(Option::<&gtk::ListBoxRow>::None);
+        }
+        let (plugin, plugin_match) = matches[next];
+        plugin
+            .matches
+            .widget()
+            .select_row(Some(&plugin_match.row));
+
+        // Defensive: ensure the entry keeps keyboard focus so Escape / typing
+        // keep working even if some interaction tried to move focus away.
+        // This is a no-op when the entry already has focus and does not break
+        // system key-repeat.
+        entry.grab_focus_without_selecting();
+
+        // Scroll the selected row into view inside the scrolled window.
+        // translate_coordinates returns the row's position relative to the
+        // scrolled window's viewport, so y in [0, page_size] means visible,
+        // y < 0 means scrolled above the viewport, y > page_size means below.
+        let vadj = scrolled.vadjustment();
+        if let Some((_, y)) = plugin_match.row.translate_coordinates(scrolled, 0.0, 0.0) {
+            let row_h = plugin_match.row.height() as f64;
+            let page = vadj.page_size();
+            if y < 0.0 {
+                // Row is above the viewport: scroll up so the row aligns with top.
+                vadj.set_value(vadj.value() + y);
+            } else if y + row_h > page {
+                // Row is below the viewport: scroll down so the row aligns with bottom.
+                vadj.set_value(vadj.value() + (y + row_h - page));
+            }
+        }
+    }
+
     fn current_selection(&self) -> Option<(usize, &PluginBox, &PluginMatch)> {
         self.plugins
             .iter()
@@ -198,18 +262,34 @@ impl Component for App {
                         connect_key_pressed[sender] => move |_, key, _, modifier| {
                             sender.input(AppMsg::KeyPressed { key, modifier});
                             match key {
-                                gdk::Key::Tab => glib::Propagation::Stop,
+                                // We handle navigation ourselves; stopping propagation
+                                // keeps focus on the entry so key-repeat keeps firing
+                                // and the ListBox never steals it.
+                                gdk::Key::Tab
+                                | gdk::Key::Up
+                                | gdk::Key::Down
+                                | gdk::Key::Return
+                                | gdk::Key::Escape => glib::Propagation::Stop,
                                 _ => glib::Propagation::Proceed,
                             }
                         }
                     }
                 },
-                #[local]
-                plugins -> gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_can_focus: false,
-                    set_css_classes: &["matches"],
+                #[local_ref]
+                plugins_scrolled -> gtk::ScrolledWindow {
                     set_hexpand: true,
+                    set_vexpand: false,
+                    set_policy: (gtk::PolicyType::Never, gtk::PolicyType::Automatic),
+                    set_propagate_natural_height: true,
+                    set_has_frame: false,
+
+                    #[local]
+                    plugins -> gtk::Box {
+                        set_orientation: gtk::Orientation::Vertical,
+                        set_can_focus: false,
+                        set_css_classes: &["matches"],
+                        set_hexpand: true,
+                    }
                 }
             }
         }
@@ -278,6 +358,15 @@ impl Component for App {
         let config = Arc::new(config);
 
         let plugins = gtk::Box::builder().build();
+
+        let plugins_scrolled = gtk::ScrolledWindow::builder().build();
+        if let Some(h) = config.list_height {
+            plugins_scrolled.set_height_request(h as i32);
+            plugins_scrolled.set_propagate_natural_height(false);
+        } else {
+            plugins_scrolled.set_propagate_natural_height(true);
+        }
+        plugins_scrolled.set_child(Some(&plugins));
 
         let plugins_factory = FactoryVecDeque::<PluginBox>::builder()
             .launch(plugins.clone())
@@ -413,35 +502,10 @@ impl Component for App {
                     }
                 }
                 Action::Up => {
-                    if let Some((i, plugin, _)) = self.current_selection() {
-                        let matches = self.combined_matches();
-                        plugin
-                            .matches
-                            .widget()
-                            .select_row(Option::<&gtk::ListBoxRow>::None);
-                        if i > 0 {
-                            let (plugin, plugin_match) = matches[i - 1];
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        } else {
-                            let (plugin, plugin_match) = matches.last().unwrap();
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        }
-                    }
+                    self.move_selection(&widgets.entry, &widgets.plugins_scrolled, false);
                 }
                 Action::Down => {
-                    if let Some((i, plugin, _)) = self.current_selection() {
-                        let matches = self.combined_matches();
-                        plugin
-                            .matches
-                            .widget()
-                            .select_row(Option::<&gtk::ListBoxRow>::None);
-                        if let Some((plugin, plugin_match)) = matches.get(i + 1) {
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        } else {
-                            let (plugin, plugin_match) = matches[0];
-                            plugin.matches.widget().select_row(Some(&plugin_match.row));
-                        }
-                    }
+                    self.move_selection(&widgets.entry, &widgets.plugins_scrolled, true);
                 }
             },
             AppMsg::EntryChanged(text) => {
