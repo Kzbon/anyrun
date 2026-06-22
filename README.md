@@ -1,8 +1,50 @@
-# Anyrun
+# Anyrun (fuzzel-style fork)
 
 A wayland native krunner-like runner, made with customizability in mind.
 
+This is a **personal fork** of [anyrun-org/anyrun](https://github.com/anyrun-org/anyrun)
+that tweaks it to behave more like [fuzzel](https://codeberg.org/dnkl/fuzzel):
+the application menu expands by default on empty input and is fully navigable
+with the keyboard.
+
 <img width="950" height="702" alt="image" src="https://github.com/user-attachments/assets/0a53b435-58f5-4a7c-90f7-b3f39266f2f4" />
+
+## What this fork changes
+
+- **fuzzel-style empty input**: when the input is empty, all applications are
+  listed immediately (sorted by name) instead of showing nothing.
+- **Scrollable results list**: a new `list_height` config option caps the result
+  list height and lets it scroll internally, instead of the window growing
+  unbounded.
+- **Reliable keyboard navigation**: arrow keys / Tab move the selection and the
+  list scrolls the active row into view. Key repeat now works when holding an
+  arrow key (previously it only moved once).
+- **Toggle via the same keybinding**: launching `anyrun` while it is already
+  visible now closes it, so a single key (e.g. `Mod+D`) both opens and closes
+  the launcher. Requires running `anyrun daemon`.
+- **Click-outside-to-close**: `close_on_click` keeps its meaning, but the window
+  stays visually small (no full-screen overlay) thanks to a transparent capture
+  layer.
+- **Selection styling**: removed the fade-in animation on the selected row so it
+  doesn't flicker during fast keyboard navigation.
+
+## Environment
+
+Anyrun runs on any Wayland compositor that implements the
+[wlr-layer-shell](https://gitlab.freedesktop.org/wlroots/wlr-protocols/-/blob/master/unstable/wlr-layer-shell-unstable-v1.xml)
+protocol (niri, Hyprland, Sway, river, etc.). The changes in this fork are
+pure GTK4 / layer-shell and have **no compositor-specific dependency** — they
+behave identically everywhere.
+
+Development and testing were done on:
+
+- OS: Debian testing
+- Compositor: niri (Wayland)
+- GTK4 + gtk4-layer-shell
+- Rust (via [rustup](https://rustup.rs))
+- Depends on [anyrun-provider](https://github.com/anyrun-org/anyrun-provider)
+  for search results (must be in `$PATH`, or set via the `provider` config
+  option).
 
 > [!NOTE]
 > If you use Nvidia and Anyrun refuses to close for you, you need to set `GSK_RENDERER=ngl` for Anyrun.
@@ -12,7 +54,7 @@ A wayland native krunner-like runner, made with customizability in mind.
 ## Features
 
 - Style customizability with GTK4 CSS
-  - More info in [Styling](#Styling)
+  - More info in [Styling](#styling)
 - Can do basically anything
   - As long as it can work with input and selection
   - Hence the name Anyrun
@@ -49,118 +91,17 @@ build & run it:
 
 ## Installation
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/anyrun.svg)](https://repology.org/project/anyrun/versions)
-
-### Nix
-
-An Anyrun package that contains all the official plugins is available in [nixpkgs](https://search.nixos.org/packages?channel=unstable&show=anyrun&from=0&size=50&sort=relevance&type=packages&query=anyrun).
-
-#### Home-Manager module
-
-The preferred way to use Home-Manager with Anyrun is by using the upstream module.
-
-You may use it in your system like this:
-
-```nix
-{
-  programs.anyrun = {
-    enable = true;
-    config = {
-      x = { fraction = 0.5; };
-      y = { fraction = 0.3; };
-      width = { fraction = 0.3; };
-      hideIcons = false;
-      ignoreExclusiveZones = false;
-      layer = "overlay";
-      hidePluginInfo = false;
-      closeOnClick = false;
-      showResultsImmediately = false;
-      maxEntries = null;
-
-      plugins = [
-        "${pkgs.anyrun}/lib/libapplications.so"
-        "${pkgs.anyrun}/lib/libsymbols.so"
-      ];
-    };
-
-    # Inline comments are supported for language injection into
-    # multi-line strings with Treesitter! (Depends on your editor)
-    extraCss = /*css */ ''
-      .some_class {
-        background: red;
-      }
-    '';
-
-    extraConfigFiles."some-plugin.ron".text = ''
-      Config(
-        // for any other plugin
-        // this file will be put in ~/.config/anyrun/some-plugin.ron
-        // refer to docs of xdg.configFile for available options
-      )
-    '';
-  };
-}
-```
-
-Alternatively, you may use the module from this repository's flake to keep up
-with development branches:
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    home-manager.url = "github:nix-community/home-manager";
-    anyrun.url = "github:anyrun-org/anyrun";
-  };
-  outputs = {self, ...}@inputs: {
-    homeConfigurations.user = inputs.home-manager.lib.homeManagerConfiguration {
-      modules = [
-        ({ modulesPath, ... }: {
-          # Important! We disable home-manager's module to avoid option
-          # definition collisions
-          disabledModules = ["${modulesPath}/programs/anyrun.nix"];
-        })
-        inputs.anyrun.homeManagerModules.default
-        {
-          programs.anyrun = {
-            # ...
-          };
-        }
-      ];
-    };
-  }
-}
-```
-
-Anyrun packages are built and cached automatically. To avoid unnecessary
-recompilations, you may use the binary cache.
-
-```nix
-nix.settings = {
-    builders-use-substitutes = true;
-    extra-substituters = [
-        "https://anyrun.cachix.org"
-    ];
-
-    extra-trusted-public-keys = [
-        "anyrun.cachix.org-1:pqBobmOjI7nKlsUMV25u9QHa9btJK65/C8vnO3p346s="
-    ];
-};
-```
-
-> [!WARNING]
-> While using the Anyrun flake, overriding the `nixpkgs` input for Anyrun will
-> cause cache misses, i.e., you will have to build from source every time. To use
-> the cache, do _not_ override the Nixpkgs input.
+This fork is not published to any distribution's package repositories or
+nixpkgs. Build it from source.
 
 ### Manual installation
 
-Make sure all of the dependencies are installed, and then run the following
-commands in order:
+Make sure all of the dependencies from [Dependencies](#dependencies) are
+installed, and then run the following commands in order:
 
 ```bash
-# Clone the repository and move to the cloned location
-git clone https://github.com/anyrun-org/anyrun && cd anyrun
+# Clone this fork and move to the cloned location
+git clone https://github.com/Kzbon/anyrun anyrun && cd anyrun
 
 # Build all packages, and install the Anyrun binary
 cargo build --release
@@ -175,6 +116,29 @@ cp target/release/*.so ~/.config/anyrun/plugins
 # Copy the default config file
 cp examples/config.ron ~/.config/anyrun/config.ron
 ```
+
+### Running as a daemon (recommended)
+
+The toggle / click-outside-to-close behaviour depends on the daemon being
+running. Start it alongside your compositor:
+
+**niri** (`~/.config/niri/config.kdl`):
+```kdl
+spawn-at-startup "anyrun" "daemon"
+```
+
+**Hyprland** (`~/.config/hypr/hyprland.conf`):
+```
+exec-once = anyrun daemon
+```
+
+**Sway** (`~/.config/sway/config`):
+```
+exec anyrun daemon
+```
+
+Then bind a single key (e.g. `Mod+D`) to plain `anyrun` — it will both open
+and close the launcher.
 
 ## Plugins
 
@@ -270,7 +234,7 @@ temporarily only run the Applications and Symbols plugins on the top side of the
 screen, you would run
 `anyrun --plugins libapplications.so --plugins libsymbols.so --position top`.
 
-# Plugin development
+## Plugin development
 
 The plugin API is intentionally very simple to use. This is all you need for a
 plugin:
@@ -283,7 +247,7 @@ plugin:
 crate-type = ["cdylib"] # Required to build a dynamic library that can be loaded by anyrun
 
 [dependencies]
-anyrun-plugin = { git = "https://github.com/anyrun-org/anyrun" }
+anyrun-plugin = { git = "https://github.com/Kzbon/anyrun" }
 abi_stable = "0.11.1"
 # Any other dependencies you may have
 ```
@@ -330,3 +294,10 @@ fn handler(selection: Match) -> HandleResult {
 
 And that's it! That's all of the API needed to make runners. Refer to the
 plugins in the [plugins](plugins) folder for more examples.
+
+## Acknowledgements
+
+This fork is built on top of [anyrun-org/anyrun](https://github.com/anyrun-org/anyrun).
+All credit for the original runner, plugin system, and the vast majority of the
+codebase goes to the upstream authors and contributors. This fork only adds a
+small set of personal UX tweaks on top of their work.
